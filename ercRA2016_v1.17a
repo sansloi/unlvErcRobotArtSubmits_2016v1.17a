@@ -1,0 +1,743 @@
+/* note: the difference between reference and actual values
+WARNING#1 Do not use multiple USB connections on the laptop you use, resetting connection
+actually reconnects to the arduino and resets servo position to default 
+
+This script may be used for painting demos by a student who has take, and passed a safety
+tour for the UNLV-ERC Art Robot */
+#include <Servo.h>
+#include <Stepper.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+int pos1 = 0, pos2 = 0;                 // variable to store the servo position 
+int sameDegreeMax = 45;                 //in [angle degrees]
+int delayServoValue = 30;               //in [ms]
+int input, inputRotation, inputDelay;
+//use input value, user input for rotation (degrees), user input for delay amount (ms)
+
+char junk = ' ';
+/*torxis servos are rated for 270 deg, /w mc. but horn to function values are off.
+ It doesn't actually reach 270 deg due to the servo functions we're using with the arduino. Also, servo 1, has a slipping pot (encoder) 
+ when returning back to 0 from the ccw direction. place a delay
+ */
+ 
+int analogPinServo1 = 1, analogPinServo2 = 2;     //Servo 1 connects to analog 3
+int potServo1 = 0, potServo2 = 0;                 //Pot value for Servo 1, integer
+int safetyCheck = 0;
+
+/* Analog pins A8 - A12 */
+int ctrlPot1Pin = A8, ctrlPot2Pin = A9, ctrlPot3Pin = A10, ctrlPot4Pin = A11, ctrlPot5Pin = A12;//Arduino Analog Pins
+int ctrlPot1, ctrlPot2, ctrlPot3, ctrlPot4, ctrlPot5;                           //for V_out values in controller pots
+
+/* safety checks always start as false */
+boolean rdyFlagServo = false, rdyFlagPot = false, rdyFlag = false;              //false unless proven innocent
+int rdyPot1, rdyPot2, rdyPot3, rdyPot4, rdyPot5;    //holders
+int differencePot1, differencePot2, differencePot3, differencePot4, differencePot5;
+int ctrlPotAng1, ctrlPotAng2, ctrlPotAng3, ctrlPotAng4, ctrlPotAng5; 
+int potCenterRange = 35, potDeadRange = 15;                        //becareful here, potDeadRange needs to be minimized
+int motorA = 8, motorB = 9;                     //S1 from sabertooth to D8, S2 to D9
+
+Servo myservo1, myservo2;                                                       // create servo object to control a servo 
+
+/* Stepper Parameters below */
+
+const int stepsPerRevolution = 200;     //our servo is 1.8 steps per deg
+//Stepper myStepper(stepsPerRevolution, 2, 4, 6, 7); //H-bridge pins
+Stepper myStepper(stepsPerRevolution, 2,4,6,7);
+int previous = 0;
+int stepperMax = 425;
+/*time stamps */
+long temps; //millisecdones;
+
+void setup() 
+{ 
+  myservo1.attach(12);        // attaches the servo on pin 9 to the servo object, include extra delay on servo1
+  myservo2.attach(13);        // use regular delay on servo 2
+  pinMode(motorA, OUTPUT);   //set pin as output, feeds to RC-filter, has R and C..
+  pinMode(motorB, OUTPUT);   //should I bring out the internal pull up resistor?
+  myStepper.setSpeed(60);                //20 rpm
+
+
+
+  Serial.begin(9600);
+  Serial.println("Welcome to ERC's Robot Art version 1.19a!");
+  Serial.println("To begin, press an option from the menu below");
+  Serial.println(" ");
+  Serial.flush();
+  //int safetyCheck = 0;
+} //end of setup curls
+  
+void loop() 
+{//voidloop
+  
+  /* SANITY CHECK */
+  /*while (safetyCheck < 1); */
+       
+        //Serial.println("To begin duel-sweep ENTER 0");
+        //Serial.println("To move servo 1 only ENTER 1");
+        //Serial.println("To move servo 2 only ENTER 2");
+        //Serial.println("To conduct Analog read test, ENTER 3");
+        //Serial.println("To conduct test on controller, ENTER 4");
+        Serial.println("To conduct breadboard controller test, ENTER 5");
+        Serial.println("To conduct duel track control test, ENTER 6");
+        Serial.println("This is a prototype program, please don't press any other button");
+
+        while (Serial.available()== 0);  //wait here until input buffer has a character
+        {
+          input = Serial.parseFloat();  //input value, should be integer
+          while (Serial.available() > 0)  //parhseFloat() can leave non-numberic characters
+          { 
+            junk = Serial.read() ; 
+          }    //clear the keyboard buffer
+        }
+      
+      /* FUNCTION 0 FUNCTION 0 FUNCTION 0 FUNCTION 0 FUNCTION 0 FUNCTION 0 */
+        if (input == 0)
+        {
+          
+          Serial.println("You have selected 0");
+          Serial.println("How many degrees do you wish both servos to rotate? (int from 0 to 270)");
+          while (Serial.available()== 0);          //wait here until input buffer has a character
+          {
+            inputRotation = Serial.parseFloat();   //input value, should be integer
+            Serial.print("inputRotation =");
+            Serial.println(inputRotation, DEC); 
+            Serial.println();                      //should add a blank line at end
+      
+            while (Serial.available() > 0)         //Float() can leave non-numberic characters
+            { 
+              junk = Serial.read();               //clear the keyboard buffer
+            }                                      
+          }
+          /*
+        {
+            Serial.print("inputDelay  =");
+            Serial.println(input, DEC); 
+            Serial.println();  //should add a blank line at end
+            inputRotation = Serial.parseFloat();  //input value, should be integer
+            while (Serial.available() > 0)  //parhseFloat() can leave non-numberic characters
+            { 
+              junk = Serial.read() ; 
+            }    //clear the keyboard buffer
+          }
+          */
+      
+          for(pos1 = 0; pos1 < inputRotation; pos1 += 1)  // goes from 0 degrees to 180 degrees 
+          {                                    // in steps of 1 degree 
+            potServo1 = analogRead(analogPinServo1);  //reads A2D pin3
+            potServo2 = analogRead(analogPinServo2);   
+            //myservo1.write(pos1);                         // tell servo to go to position in variable 'pos' 
+            delay(delayServoValue);                       // waits 15ms for the servo to reach the position 
+            /* Print Stream */
+            Serial.print("Servo 1 Ref:");
+            Serial.print(pos1);
+            Serial.print("\t");
+            Serial.print("Servo 1 Pot:");
+            Serial.print(potServo1);
+            Serial.print("\t \t");
+            Serial.print("Servo 2 Position:");
+            Serial.print(pos2);
+            Serial.print("\t");
+            Serial.print("Pot Position:");
+            Serial.println(potServo2);
+            /* Print Stream */
+          } 
+
+          for(pos1 = inputRotation; pos1>= 1; pos1-= 1)     // goes from 180 degrees to 0 degrees 
+          { 
+            potServo1 = analogRead(analogPinServo1);  //reads A2D pin3
+            potServo2 = analogRead(analogPinServo2); 
+            //myservo1.write(pos1);                           // tell servo to go to position in variable 'pos' 
+            delay(delayServoValue+5);                       // waits 15ms for the servo to reach the position 
+            //NOTE* Servo 1 (from pin D9, has a broken pot when approaching 0 from CCW!!! use longer delay
+            /* Print Stream */
+            Serial.print("Servo 1 Ref:");
+            Serial.print(pos1);
+            Serial.print("\t");
+            Serial.print("Servo 1 Pot:");
+            Serial.print(potServo1);
+            Serial.print("\t \t");
+            Serial.print("Servo 2 Position:");
+            Serial.print(pos2);
+            Serial.print("\t");
+            Serial.print("Pot Position:");
+            Serial.println(potServo2);
+            /* Print Stream */
+          }
+      
+          for(pos2 = 0; pos2 < inputRotation; pos2 += 1)
+          {
+            potServo1 = analogRead(analogPinServo1);  //reads A2D pin3
+            potServo2 = analogRead(analogPinServo2); 
+            //myservo2.write(pos2);
+            delay(delayServoValue);   
+            /* Print Stream */
+            Serial.print("Servo 1 Ref:");
+            Serial.print(pos1);
+            Serial.print("\t");
+            Serial.print("Servo 1 Pot:");
+            Serial.print(potServo1);
+            Serial.print("\t \t");
+            Serial.print("Servo 2 Position:");
+            Serial.print(pos2);
+            Serial.print("\t");
+            Serial.print("Pot Position:");
+            Serial.println(potServo2);
+            /* Print Stream */
+          }
+      
+          for(pos2 = inputRotation; pos2 >= 1; pos2 -= 1)
+          {
+            potServo1 = analogRead(analogPinServo1);  //reads A2D pin3
+            potServo2 = analogRead(analogPinServo2); 
+            //myservo2.write(pos2);
+            delay(delayServoValue); 
+            /* Print Stream */
+            Serial.print("Servo 1 Ref:");
+            Serial.print(pos1);
+            Serial.print("\t");
+            Serial.print("Servo 1 Pot:");
+            Serial.print(potServo1);
+            Serial.print("\t \t");
+            Serial.print("Servo 2 Position:");
+            Serial.print(pos2);
+            Serial.print("\t");
+            Serial.print("Pot Position:");
+            Serial.println(potServo2);
+            /* Print Stream */
+          }
+          Serial.println();        //keep for discontinuity in read-out
+          
+
+        }
+      
+      /* FUNCTION 1 FUNCTION 1 FUNCTION 1 FUNCTION 1 FUNCTION 1 FUNCTION 1 FUNCTION 1*/
+      
+        else if (input == 1)
+        {
+          Serial.println("You have Selected 1, servo #1 will move only");
+          Serial.println("How many degrees do you wish Servo 1 to rotation? (int from 0 to 270)");
+          while (Serial.available()== 0);  //wait here until input buffer has a character
+          {
+            inputRotation = Serial.parseFloat();  //input value, should be integer
+            Serial.print("inputRotation =");
+            Serial.println(inputRotation, DEC); 
+            Serial.println();  //should add a blank line at end
+            
+            while (Serial.available() > 0)  //parhseFloat() can leave non-numberic characters
+            { 
+              junk = Serial.read() ; 
+            }    //clear the keyboard buffer
+          }      
+
+          for(pos1 = 0; pos1 < inputRotation; pos1 += 1)  // goes from 0 degrees to 180 degrees 
+          {                                               // in steps of 1 degree 
+            potServo1 = analogRead(analogPinServo1);    //reads A2D pin3
+            potServo2 = analogRead(analogPinServo2); 
+            //myservo1.write(pos1);              // tell servo to go to position in variable 'pos' 
+            delay(delayServoValue);                       // waits 15ms for the servo to reach the position 
+            /* Print Stream */
+            Serial.print("Servo 1 Ref:");
+            Serial.print(pos1);
+            Serial.print("\t");
+            Serial.print("Servo 1 Pot:");
+            Serial.print(potServo1);
+            Serial.print("\t \t");
+            Serial.print("Servo 2 Position:");
+            Serial.print(pos2);
+            Serial.print("\t");
+            Serial.print("Pot Position:");
+            Serial.println(potServo2);
+            /* Print Stream */
+          } 
+          for(pos1 = inputRotation; pos1>= 1; pos1-= 1)     // goes from 180 degrees to 0 degrees 
+          { 
+            potServo1 = analogRead(analogPinServo1);  //reads A2D pin3
+            potServo2 = analogRead(analogPinServo2);             
+           // myservo1.write(pos1);              // tell servo to go to position in variable 'pos' 
+            delay(delayServoValue+5);                       // waits 15ms for the servo to reach the position 
+            //NOTE* Servo 1 (from pin D9, has a broken pot when approaching 0 from CCW!!! use longer delay
+            /* Print Stream */
+            Serial.print("Servo 1 Ref:");
+            Serial.print(pos1);
+            Serial.print("\t");
+            Serial.print("Servo 1 Pot:");
+            Serial.print(potServo1);
+            Serial.print("\t \t");
+            Serial.print("Servo 2 Position:");
+            Serial.print(pos2);
+            Serial.print("\t");
+            Serial.print("Pot Position:");
+            Serial.println(potServo2);
+            /* Print Stream */
+          }
+            Serial.println();  //final line break, keep for discontinuity in read-out
+        }
+        
+        /* FUNCTION 2 FUNCTION 2 FUNCTION 2 FUNCTION 2 FUNCTION 2 FUNCTION 2 FUNCTION 2*/
+      
+        else if (input == 2)    //Use to Test motor 2 rotations
+        {
+          Serial.println("You have Selected 2, servo #2 will move only");
+          Serial.println("How many degrees do you wish Servo 2 to rotate? (int from 0 to 270)");
+          while (Serial.available()== 0);  //wait here until input buffer has a character
+          {
+            Serial.print("input value =");
+            Serial.println(input, DEC); 
+            Serial.println();  //should add a blank line at end
+            inputRotation = Serial.parseFloat();  //inpu1t value, should be integer
+            while (Serial.available() > 0)  //parhseFloat() can leave non-numberic characters
+            { 
+              junk = Serial.read() ; 
+            }    //clear the keyboard buffer
+          }       
+      
+          Serial.println("input value =");
+          Serial.println(input, DEC); 
+          Serial.println();  //should add a blank line at end
+          for(pos2 = 0; pos2 < inputRotation; pos2 += 1)  // goes from 0 degrees to 180 degrees 
+          {                                    // in steps of 1 degree 
+            potServo1 = analogRead(analogPinServo1);  //reads A2D pin3
+            potServo2 = analogRead(analogPinServo2);           
+            //myservo2.write(pos2);              // tell servo to go to position in variable 'pos' 
+            delay(delayServoValue);                       // waits 15ms for the servo to reach the position 
+            /* Print Stream */
+            Serial.print("Servo 1 Ref:");
+            Serial.print(pos1);
+            Serial.print("\t");
+            Serial.print("Servo 1 Pot:");
+            Serial.print(potServo1);
+            Serial.print("\t \t");
+            Serial.print("Servo 2 Position:");
+            Serial.print(pos2);
+            Serial.print("\t");
+            Serial.print("Pot Position:");
+            Serial.println(potServo2);
+            /* Print Stream */
+          } 
+          for(pos2 = inputRotation; pos2>= 1; pos2-= 1)     // goes from 180 degrees to 0 degrees 
+          { 
+            potServo1 = analogRead(analogPinServo1);  //reads A2D pin3
+            potServo2 = analogRead(analogPinServo2);             
+            //myservo2.write(pos2);              // tell servo to go to position in variable 'pos' 
+            delay(delayServoValue+5);                       // waits 15ms for the servo to reach the position 
+            //NOTE* Servo 1 (from pin D9, has a broken pot when approaching 0 from CCW!!! use longer delay
+            /* Print Stream */
+            Serial.print("Servo 1 Ref:");
+            Serial.print(pos1);
+            Serial.print("\t");
+            Serial.print("Servo 1 Pot:");
+            Serial.print(potServo1);
+            Serial.print("\t \t");
+            Serial.print("Servo 2 Position:");
+            Serial.print(pos2);
+            Serial.print("\t");
+            Serial.print("Pot Position:");
+            Serial.println(potServo2);
+            /* Print Stream */
+          }
+            Serial.println();        //keep for discontinuity in read-out
+        }
+        /*  FUNCTION 3 FUNCTION 3 FUNCTION 3  FUNCTION 3  FUNCTION 3  FUNCTION 3  */
+        /* note: this function is for testing only. it'll run on and never break */
+        else if (input == 3)
+        {
+          int analogPin = 3;  //analog pin number 3
+          int val = 0;        //value 
+          int tree = 1;
+          while (tree == 1)
+          {
+            val = analogRead(analogPin);  //read the input pin                 
+            Serial.println(val);          //print value
+          }      
+        }
+       /*  FUNCTION 4 FUNCTION 4 FUNCTION 4  FUNCTION 4  FUNCTION 4  FUNCTION 4  */
+        else if (input == 4)
+        {
+          int response4 = 0;
+          Serial.println("You have selected 4");
+          Serial.println("You're about to begin a controller test, are you ready? 1 = yes, 2 = no");
+          while (Serial.available()== 0);  //wait here until input buffer has a character
+          {
+            response4 = Serial.parseFloat();  //input value, should be integer
+            Serial.print("response4 = ");
+            Serial.println(response4, DEC); 
+            Serial.println();  //should add a blank line at end
+            while (Serial.available() > 0)  //parhseFloat() can leave non-numberic characters
+            { 
+              junk = Serial.read() ; 
+            }    //clear the keyboard buffer
+          }
+          int variable = true;
+          while (variable == true)
+          {
+            ctrlPot1 = analogRead(A0);  //shouldbe A8
+            Serial.print("encoder value1 :"); 
+            Serial.println(ctrlPot1);           
+            delay(100);
+          } 
+        }  //exit function 4
+       /*  FUNCTION 5 FUNCTION 5 FUNCTION 5  FUNCTION 5  FUNCTION 5 FUNCTION 5  */
+        else if (input == 5)
+        {
+          int response5 = 0;
+          Serial.println("You have selected 5");
+          Serial.println("You're about to begin a controller test, are you ready? 1 = yes, 2 = no");
+          while (Serial.available()== 0);  //wait here until input buffer has a character
+          {
+            response5 = Serial.parseFloat();  //input value, should be integer
+            Serial.print("response5 = ");
+            Serial.println(response5, DEC); 
+            Serial.println();  //should add a blank line at end
+            while (Serial.available() > 0)  //parhseFloat() can leave non-numberic characters
+            { 
+              junk = Serial.read() ; 
+            }    //clear the keyboard buffer
+          }
+          rdyPot1 = analogRead(A8);  //first pot
+          rdyPot2 = analogRead(A9);
+          rdyPot3 = analogRead(A10);
+          rdyPot4 = analogRead(A11);
+          rdyPot5 = analogRead(A12);
+
+          differencePot1 = rdyPot1 - 512; 
+          differencePot2 = rdyPot2 - 512;
+          differencePot3 = rdyPot3 - 0;    //let's try a near-full cw start
+          //differencePot4 = rdyPot4 - 635;  //note below as to why we're using 635. You'll likely change this if you switch capacitors
+          differencePot4 = rdyPot4 - 512;    //comment out if using the default configeration
+          differencePot5 = rdyPot5 - 512;
+
+          differencePot1 = abs(differencePot1);  //make positive
+          differencePot2 = abs(differencePot2);
+          differencePot3 = abs(differencePot3);
+          differencePot4 = abs(differencePot4);
+          differencePot5 = abs(differencePot5);
+
+          if (differencePot1 > potCenterRange)    //integer of 28 is equal to about 5 degrees, pot one be at center before movement will start
+            {
+              rdyPot1 = false;
+              Serial.println(differencePot1);
+              Serial.println("Opps! Potentiometer #1 is not centered, please check the arrow");
+              Serial.println("Please press 5 to repeat the previous procedure after you've adjusted the encoder");
+              return;  //don't need the 1 :/
+            }
+          else (differencePot1 <= potCenterRange);  //if position of pot1 is cenetered
+          {//f5 e1
+           if (differencePot2 > potCenterRange)    //integer of 28 is equal to about 5 degrees, pot one be at center before movement will start
+            {
+              rdyPot2 = false;
+              Serial.println(differencePot2);
+              Serial.println("Opps! Potentiometer #2 is not centered, please check the arrow");
+              Serial.println("Please press 5 to repeat the previous procedure after you've adjusted the encoder");
+              return;  //don't need the 1 :/
+            }
+            else (differencePot2 <= potCenterRange);  //if position of pot2 is centered 
+              {//f5 edp2
+                if (differencePot4 > potDeadRange)    //motorA needs to be "centered", but use the dot not the line (635)
+                    {                                 //only if not in the default config. o.w. use 512 as center ref.
+                    Serial.print("pot4 difference =:");
+                    Serial.println(differencePot4);
+                    //Serial.println("WARNING! Potentiomenter #4 is not near 635, please check the dot position");
+                    Serial.println("WARNING! Potentiometer #4 is not near center, please check the line position");
+                    Serial.println("Please press 5 to repeat the previous routine after you've adjusted the encoder");
+                    return;
+                    }
+                else (differencePot4 <= potDeadRange);
+                {//f5 e dp4 pdr
+                    if (differencePot3 > potCenterRange)   //step pot should also cenetered
+                    {
+                    Serial.print("pot3 difference =:");
+                    Serial.println(differencePot3);
+                    Serial.println("WARNING! Poteniometer #3 is not near 512 (centerline), please check the arrow");
+                    Serial.println("Please press 5 to repeat the previous routine after you've adjusted the encoder");
+                    return;
+                    }
+                  
+                  {//f4e dp4
+                   Serial.println("Okay, we're good to go!");
+                   rdyFlag = true;
+                   int variable = true;
+                   while (variable == true)
+                   {//f5w1
+                    ctrlPot1 = analogRead(A8);  //shouldbe A8, from servo 1
+                    ctrlPot2 = analogRead(A9);  //from servo 2
+                    ctrlPot3 = analogRead(A10); //use to move stepper
+                    ctrlPot4 = analogRead(A11); // to MA
+                    ctrlPot5 = analogRead(A12); //to MB
+                    temps = millis();   //timestamp from "le debut du programme", long
+                    Serial.print("time: ");
+                    Serial.print(temps);
+                    Serial.print("\t");
+                    Serial.print("ctrlPot1 value :"); 
+                    Serial.print(ctrlPot1);
+                    Serial.print("\t");
+                    Serial.print("ctrlPot2 value :"); 
+                    Serial.print(ctrlPot2);
+                    Serial.print("\t");
+                    Serial.print("ctrlPot3 value :"); 
+                    Serial.print(ctrlPot3);
+                    Serial.print("\t");
+                    Serial.print("ctrlPot4 value:");
+                    Serial.print(ctrlPot4);
+                    Serial.print("\t");
+                    Serial.print("ctrlPot5 value:");
+                    Serial.print(ctrlPot5);
+                    Serial.println("\t");
+
+                    /* this sectoin should only output a n = 10 sample mean */
+                   //int analogMatrix1[] = {analogRead(A8)};
+                   //analogMatrix1[] = [analogMatrix1, analogRead(A8)];
+                  // this section should write read V_out from pot 
+                  ctrlPotAng1 = map(ctrlPot1, 0, 1023, 0, 180);        //do not change from 180; A8
+                  ctrlPotAng2 = map(ctrlPot2, 0, 1023, 0, 180);        //do not change from 180
+                  //ctrlPotAng3 = map(ctrlPot3, 0, 1023, -200, 200);      // (-) is backwards
+                 // ctrlPotAng4 = map(ctrlPot4, 0, 1023, 0, 255);        // this one
+                  //ctrlPotAng4 = map(ctrlPot4, 0, 1023, 141, 174);
+                  ctrlPotAng4 = map(ctrlPot4, 0, 1023, 570, 700);
+                  ctrlPotAng5 = map(ctrlPot5, 0, 1023, 0, 255); 
+                // insanity check
+                
+                if (rdyFlag == true)
+                  {//f5 if2
+                    while (ctrlPot1 < 600 && ctrlPot1 > 200)
+                    {
+                      myservo1.write(ctrlPotAng1);
+                      break;
+                    }
+                  while (ctrlPot2 < 900 && ctrlPot2 > 500 ) //servo 2 limits (600-800)
+                    {
+                      myservo2.write(ctrlPotAng2);  
+                      break;
+                    }
+                   
+                    while (ctrlPot3 < (425) && ctrlPot3 > (0) )  //stepper write
+                    {
+                      //myStepper.stop(ctrlPotAng3);
+                      myStepper.step(ctrlPot3 - previous);
+                      previous = ctrlPot3;                               //memory effect
+                      break;
+                    }
+                    
+                    while (ctrlPot4 < (1013) && ctrlPot4 > (10) ) //platform Motor A write
+                    {
+                      /* Hello young engineer! Ask  yourself this, what is the V_out cut-off frequency of a 1st order low-pass RC filter? 
+                     Recall the map for ctrlpot4 function above*. For the uninitiated here is some emperical qualitiave observations:
+                     
+                     0-448 -forward, constant fast speed within this range area
+                     448-500 - forward, faster speed, approaching max fast forward
+                     ~512 - DANGER! DANGER! motors A and B will **INSTANTIOUSLY** toggle between max speeds in forward and backward dir. AVOID region
+                                                  
+                                                   (DO NOT START near ~512! I repeat, avoid this region)
+                                                   
+                     ~512-625 -backwards, max fast speed, decreases as you near 600+
+                     635 - backwards, slow, a near pause, you'll hear the gearbox whistle
+                     635-670 - in this region speed changines to the forward direction, but starts off really slow, and gets a little faster
+                     670+ - at this point the signal is saturated (f_c) and tracks will roll backwards at the same velocity
+                     //interesting to think that this robot has analog and digital filters in it. Didn't think about including mechanical controllers, who does that anyways?
+                     //I guess you could imagine the arcylic links as "mechanical fuses" or "scraficable linkages", but that's not really a good analogy for filtering                     
+                     */ 
+                     /* EDIT: We mapped only liable values so span the entire pot4 rot. easier 
+                     the above notes apply only in the previous (default) configuration */
+                      analogWrite(motorA, ctrlPotAng4);
+                      analogWrite(motorB, ctrlPotAng4);
+                      break;
+                    }
+                   /*   
+                   while (ctrlPot2 < (800) && ctrlPot2 > (500) ) //servo 2 limits (600-800)
+                    {
+                      myservo2.write(ctrlPotAng2);  
+                      break;
+                    }
+                    */
+                  delay(10);
+                  }//f5 if2
+              }//f5w1
+             }//f5e0
+            }//f5 ep4
+              }//f5 e dp4 pdr
+          }//f5 edp2
+        }//exit function 5  
+  
+  /*  FUNCTION 6 FUNCTION 6 FUNCTION 6  FUNCTION 6  FUNCTION 6 FUNCTION 6  */
+        else if (input == 6)
+        {
+          int response6 = 0;
+          Serial.println("You have selected 6");
+          Serial.println("You're about to begin a controller test, are you ready? 1 = yes, 2 = no");
+          while (Serial.available()== 0);  //wait here until input buffer has a character
+          {
+            response6 = Serial.parseFloat();  //input value, should be integer
+            Serial.print("response6 = ");
+            Serial.println(response6, DEC); 
+            Serial.println();  //should add a blank line at end
+            while (Serial.available() > 0)  //parhseFloat() can leave non-numberic characters
+            { 
+              junk = Serial.read() ; 
+            }    //clear the keyboard buffer
+          }
+          rdyPot1 = analogRead(A8);  //first pot
+          rdyPot2 = analogRead(A9);
+          rdyPot3 = analogRead(A10);
+          rdyPot4 = analogRead(A11);
+          rdyPot5 = analogRead(A12);
+
+          differencePot1 = rdyPot1 - 512; 
+          differencePot2 = rdyPot2 - 512;
+          differencePot3 = rdyPot3 - 0;    //let's try a near-full cw start
+          differencePot4 = rdyPot4 - 512;    //comment out if using the default configeration
+          differencePot5 = rdyPot5 - 512;
+
+          differencePot1 = abs(differencePot1);  //make positive
+          differencePot2 = abs(differencePot2);
+          differencePot3 = abs(differencePot3);
+          differencePot4 = abs(differencePot4);
+          differencePot5 = abs(differencePot5);
+
+          if (differencePot1 > potCenterRange)    //integer of 28 is equal to about 5 degrees, pot one be at center before movement will start
+            {
+              rdyPot1 = false;
+              Serial.println(differencePot1);
+              Serial.println("Opps! Potentiometer #1 is not centered, please check the arrow");
+              Serial.println("Please press 5 to repeat the previous procedure after you've adjusted the encoder");
+              return;  //don't need the 1 :/
+            }
+          else (differencePot1 <= potCenterRange);  //if position of pot1 is cenetered
+          {//f6 e1
+           if (differencePot2 > potCenterRange)    //integer of 28 is equal to about 5 degrees, pot one be at center before movement will start
+            {
+              rdyPot2 = false;
+              Serial.println(differencePot2);
+              Serial.println("Opps! Potentiometer #2 is not centered, please check the arrow");
+              Serial.println("Please press 5 to repeat the previous procedure after you've adjusted the encoder");
+              return;  //don't need the 1 :/
+            }
+            else (differencePot2 <= potCenterRange);  //if position of pot2 is centered 
+              {//f6 else pot4 check
+                if (differencePot4 > potDeadRange)    //motorA needs to be "centered", but use the dot not the line (635)
+                    {                                 //only if not in the default config. o.w. use 512 as center ref.
+                    Serial.print("pot4 difference =:");
+                    Serial.println(differencePot4);
+                    //Serial.println("WARNING! Potentiomenter #4 is not near 635, please check the dot position");
+                    Serial.println("WARNING! Potentiometer #4 is not nera center, please check the line position");
+                    Serial.println("Please press 5 to repeat the previous routine after you've adjusted the encoder");
+                    return;
+                    }
+		    else (differencePot4 <= potDeadRange);
+		    {//f6 else pot4 check
+		      if (differencePot3 > potCenterRange)   //step pot should also cenetered
+		      {
+			Serial.print("pot3 difference =:");
+			Serial.println(differencePot3);
+			Serial.println("WARNING! Poteniometer #3 is not near 512 (centerline), please check the arrow");
+			Serial.println("Please press 6 to repeat the previous routine after you've adjusted the encoder");
+			return;
+		      }
+			else (differencePot3 <= potCenterRange);
+			{//f6 else pot 3 check
+			  if (differencePot5 > potDeadRange)
+			  {
+			    Serial.print("Pot5 difference =:");
+			    Serial.println(differencePot5);
+			    Serial.println("WARNING Poteniometer #5 is not near center, please check  the line position");
+			    Serial.println("Please press 6 to repeat the previous routine after you've adjusted the encoder");
+			    return;
+			  }
+			  else (differencePot5 <= potDeadRange);
+			  {  //else pot 5 check
+                            Serial.println("Okay, we're good to go!");
+                            rdyFlag = true;
+                            int variable = true;
+                            while (variable == true)
+                            {//f6w1
+                              ctrlPot1 = analogRead(A8);  //shouldbe A8, from servo 1
+                              ctrlPot2 = analogRead(A9);  //from servo 2
+                              ctrlPot3 = analogRead(A10); //use to move stepper
+                              ctrlPot4 = analogRead(A11); // to MA
+                              ctrlPot5 = analogRead(A12); //to MB
+                              temps = millis();   //timestamp from "le debut du programme", long
+                              Serial.print("time: ");
+                              Serial.print(temps);
+                              Serial.print("\t");
+                              Serial.print("ctrlPot1 value :"); 
+                              Serial.print(ctrlPot1);
+                              Serial.print("\t");
+                              Serial.print("ctrlPot2 value :"); 
+                              Serial.print(ctrlPot2);
+                              Serial.print("\t");
+                              Serial.print("ctrlPot3 value :"); 
+                              Serial.print(ctrlPot3);
+                              Serial.print("\t");
+                              Serial.print("ctrlPot4 value:");
+                              Serial.print(ctrlPot4);
+                              Serial.print("\t");
+                              Serial.print("ctrlPot5 value:");
+                              Serial.print(ctrlPot5);
+                              Serial.println("\t");
+                                
+                              ctrlPotAng1 = map(ctrlPot1, 0, 1023, 0, 180);        //do not change from 180; A8
+                              ctrlPotAng2 = map(ctrlPot2, 0, 1023, 0, 180);        //do not change from 180
+                              ctrlPotAng4 = map(ctrlPot4, 0, 1023, 570, 700);
+                              ctrlPotAng5 = map(ctrlPot5, 0, 1023, 570, 700); 
+                              // insanity check
+                
+                              if (rdyFlag == true)
+                                {//f5 if2
+                                  while (ctrlPot1 < 600 && ctrlPot1 > 200)
+                                  {
+                                    myservo1.write(ctrlPotAng1);
+                                    break;
+                                  }
+                                while (ctrlPot2 < 900 && ctrlPot2 > 500 ) //servo 2 limits (600-800)
+                                  {
+                                    myservo2.write(ctrlPotAng2);  
+                                    break;
+                                  }
+                                 
+                                  while (ctrlPot3 < (425) && ctrlPot3 > (0) )  //stepper write
+                                  {
+                                    //myStepper.stop(ctrlPotAng3);
+                                    myStepper.step(ctrlPot3 - previous);
+                                    previous = ctrlPot3;                               //memory effect
+                                    break;
+                                  }
+                                  
+                                while (ctrlPot4 < (1013) && ctrlPot4 > (10) ) //platform Motor A write
+                                  { //f5 while pot 4
+                                    /* Hello young engineer! Ask  yourself this, what is the V_out cut-off frequency of a 1st order low-pass RC filter? 
+                                   Recall the map for ctrlpot4 function above*. For the uninitiated here is some emperical qualitiave observations:
+                                   
+                                   0-448 -forward, constant fast speed within this range area
+                                   448-500 - forward, faster speed, approaching max fast forward
+                                   ~512 - DANGER! DANGER! motors A and B will **INSTANTIOUSLY** toggle between max speeds in forward and backward dir. AVOID region
+                                                                
+                                                                 (DO NOT START near ~512! I repeat, avoid this region)
+                                                                 
+                                   ~512-625 -backwards, max fast speed, decreases as you near 600+
+                                   635 - backwards, slow, a near pause, you'll hear the gearbox whistle
+                                   635-670 - in this region speed changines to the forward direction, but starts off really slow, and gets a little faster
+                                   670+ - at this point the signal is saturated (f_c) and tracks will roll backwards at the same velocity
+                                   //interesting to think that this robot has analog and digital filters in it. Didn't think about including mechanical controllers, who does that anyways?
+                                   //I guess you could imagine the arcylic links as "mechanical fuses" or "scraficable linkages", but that's not really a good analogy for filtering                     
+                                   */ 
+                                   /* EDIT: We mapped only liable values so span the entire pot4 rot. easier 
+                                   the above notes apply only in the previous (default) configuration */
+                                    analogWrite(motorA, ctrlPotAng4);
+                                    break;
+                                    } //f5 while pot6
+  
+                                 while (ctrlPot5 < (1030) && ctrlPot5 > (10) ) //servo 2 limits (600-800)
+                                  {
+                                    analogWrite(motorB, ctrlPotAng5);
+                                    break;
+                                  }
+  
+                                delay(10);
+                            }//f6 if2 
+                         }//f6w1
+			  }//else pot 5 check
+			}//f6 else pot 3 check
+		    }//f6e0 
+           }//f6 else pot4 check
+          }//f6 e1
+         }//f6 edp2
+  } //voidloop
