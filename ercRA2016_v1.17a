@@ -2,7 +2,7 @@
 WARNING#1 Do not use multiple USB connections on the laptop you use, resetting connection
 actually reconnects to the arduino and resets servo position to default 
 
-This script may be used for painting demos by a student who has take, and passed a safety
+This script may be used for painting demos by a student who has taken, and passed a safety
 tour for the UNLV-ERC Art Robot */
 #include <Servo.h>
 #include <Stepper.h>
